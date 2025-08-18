@@ -61,3 +61,18 @@ def add_vehicle(vehicle: Vehicle):
 @app.get("/is-whitelisted/{discord_id}")
 def is_whitelisted(discord_id: str):
     return { "allowed": discord_id in WHITELIST }
+from fastapi import HTTPException
+
+@app.delete("/vehicles/{index}")
+def delete_vehicle(index: int, request: Request):
+    discord_id = request.query_params.get("discord_id")
+    if discord_id not in WHITELIST:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    data = load_vehicles()
+    if index < 0 or index >= len(data):
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    deleted = data.pop(index)
+    save_vehicles(data)
+    return {"message": "Vehicle deleted", "deleted": deleted}
