@@ -1,38 +1,78 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
-import uuid
+import json
+import os
 
 app = FastAPI()
 
-# In-memory vehicle store
-vehicles = []
+# ✅ Allow frontend access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Vehicle model
+# ✅ Data file and whitelist
+DATA_FILE = "vehicles.json"
+WHITELIST = [
+    "329997541523587073",  # Doni
+    "1287198545539104780"  # Second person
+]
+
+# ✅ Vehicle model
 class Vehicle(BaseModel):
-    model: str
-    owner_id: str  # Discord ID or user identifier
+    name: str
+    miles: int
+    condition: str
+    in_stock: bool = True
+    image: str = ""
+    added_by: str
 
-@app.get("/api/ping")
-def ping():
-    return {"status": "awake"}
+# ✅ Load vehicles from file
+def load_vehicles():
+    if not os.path.exists(DATA_FILE):
+        return []
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
 
-@app.get("/api/vehicles", response_model=List[Vehicle])
+# ✅ Save vehicles to file
+def save_vehicles(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+# ✅ Get all vehicles
+@app.get("/vehicles")
 def get_vehicles():
-    return vehicles
+    return load_vehicles()
 
-@app.post("/api/vehicles")
+# ✅ Add a vehicle (only if whitelisted)
+@app.post("/vehicles")
 def add_vehicle(vehicle: Vehicle):
-    vehicle_entry = vehicle.dict()
-    vehicle_entry["id"] = str(uuid.uuid4())
-    vehicles.append(vehicle_entry)
-    return {"message": "Vehicle added", "vehicle": vehicle_entry}
+    if vehicle.added_by not in WHITELIST:
+        return {"error": "Unauthorized Discord ID"}
+    data = load_vehicles()
+    data.append(vehicle.dict())
+    save_vehicles(data)
+    return {"message": "Vehicle added successfully"}
 
-@app.delete("/api/vehicles/{vehicle_id}")
-def delete_vehicle(vehicle_id: str):
-    global vehicles
-    for v in vehicles:
-        if v.get("id") == vehicle_id:
-            vehicles = [veh for veh in vehicles if veh.get("id") != vehicle_id]
-            return {"message": "Vehicle deleted"}
-    raise HTTPException(status_code=404, detail="Vehicle not found")
+# ✅ Check if Discord ID is whitelisted
+@app.get("/is-whitelisted/{discord_id}")
+def is_whitelisted(discord_id: str):
+    return { "allowed": discord_id in WHITELIST }
+from fastapi import HTTPException
+
+@app.delete("/vehicles/{index}")
+def delete_vehicle(index: int, request: Request):
+    discord_id = request.query_params.get("discord_id")
+    if discord_id not in WHITELIST:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    data = load_vehicles()
+    if index < 0 or index >= len(data):
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    deleted = data.pop(index)
+    save_vehicles(data)
+    return {"message": "Vehicle deleted", "deleted": deleted}
