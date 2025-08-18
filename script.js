@@ -1,11 +1,12 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const vehicleList = document.getElementById('vehicle-list');
   const form = document.getElementById('vehicle-form');
-  const discordID = localStorage.getItem('userDiscordID'); // Will be replaced with OAuth2 later
-  const messageBox = document.createElement('p');
-  form.parentElement.insertBefore(messageBox, form);
+  const addedByInput = document.getElementById('added_by');
 
-  // Show logged-in user
+  // Get Discord ID from localStorage (after login)
+  const discordID = localStorage.getItem('userDiscordID');
+
+  // Show logged-in user in header
   const header = document.querySelector('h1');
   if (discordID) {
     header.innerHTML += ` <span style="font-size:0.6em;color:#888;">(Logged in as ${discordID})</span>`;
@@ -25,16 +26,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       data.forEach(vehicle => {
         const div = document.createElement('div');
-        div.className = 'vehicle-card';
+        div.className = 'vehicle';
         div.innerHTML = `
-          <div>
-            <strong>${vehicle.name}</strong><br>
-            Miles: ${vehicle.miles}<br>
-            Condition: ${vehicle.condition}<br>
-            Added by: ${vehicle.added_by}<br>
-            ${vehicle.image ? `<img src="${vehicle.image}" alt="${vehicle.name}" style="max-width:200px;margin-top:5px;">` : ''}
-          </div>
-          ${discordID ? `<button class="delete-btn" data-id="${vehicle.id}">Delete</button>` : ''}
+          <h3>${vehicle.name}</h3>
+          <p>Miles: ${vehicle.miles}</p>
+          <p>Condition: ${vehicle.condition}</p>
+          <p>Added by: ${vehicle.added_by}</p>
+          ${vehicle.image ? `<img src="${vehicle.image}" alt="${vehicle.name}">` : ''}
+          ${discordID && vehicle.added_by === discordID ? `<button class="delete-btn" data-id="${vehicle.id}">Delete</button>` : ''}
         `;
         vehicleList.appendChild(div);
       });
@@ -44,17 +43,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.addEventListener('click', async () => {
           const id = btn.dataset.id;
           try {
-            const res = await fetch(`https://ckrp-backend.onrender.com/vehicles/${id}?discord_id=${discordID}`, {
-              method: 'DELETE'
-            });
+            const res = await fetch(`https://ckrp-backend.onrender.com/vehicles/${id}?discord_id=${discordID}`, { method: 'DELETE' });
             const result = await res.json();
-            messageBox.style.color = 'green';
-            messageBox.textContent = result.message || 'Vehicle deleted!';
-            await loadVehicles();
+            alert(result.message || 'Deleted');
+            loadVehicles();
           } catch (err) {
             console.error('Delete error:', err);
-            messageBox.style.color = 'red';
-            messageBox.textContent = 'Failed to delete vehicle.';
           }
         });
       });
@@ -67,28 +61,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadVehicles();
 
-  // Check whitelist
+  // Check whitelist via backend
   async function checkWhitelist(id) {
-    if (!id) return false;
     try {
       const res = await fetch(`https://ckrp-backend.onrender.com/is-whitelisted/${id}`);
       const result = await res.json();
       return result.allowed === true;
-    } catch {
+    } catch (err) {
+      console.error('Whitelist check failed:', err);
       return false;
     }
   }
 
-  // Show form only for admins
-  if (discordID && await checkWhitelist(discordID)) {
-    form.style.display = 'block';
+  // Show form only if whitelisted
+  if (discordID) {
+    const isAllowed = await checkWhitelist(discordID);
+    if (isAllowed) {
+      addedByInput.value = discordID;
+      form.style.display = 'block';
+    } else {
+      form.style.display = 'none';
+      const msg = document.createElement('p');
+      msg.style.color = 'red';
+      msg.textContent = 'You are not authorized to add vehicles.';
+      form.parentElement.insertBefore(msg, form);
+    }
   } else {
     form.style.display = 'none';
-    messageBox.style.color = 'red';
-    messageBox.textContent = discordID ? 'You are not authorized to add vehicles.' : 'Log in to add vehicles.';
+    const msg = document.createElement('p');
+    msg.style.color = 'red';
+    msg.textContent = 'Log in to add vehicles.';
+    form.parentElement.insertBefore(msg, form);
   }
 
-  // Submit new vehicle
+  // Submit form
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const vehicle = {
@@ -107,18 +113,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       const result = await res.json();
       if (res.ok) {
-        messageBox.style.color = 'green';
-        messageBox.textContent = 'Vehicle added successfully!';
+        alert('Vehicle added successfully!');
         form.reset();
-        await loadVehicles();
+        loadVehicles(); // reload without refreshing the page
       } else {
-        messageBox.style.color = 'red';
-        messageBox.textContent = result.detail || 'Failed to add vehicle.';
+        alert(`Error: ${result.detail || 'Failed to add vehicle.'}`);
       }
     } catch (err) {
-      console.error('Submit error:', err);
-      messageBox.style.color = 'red';
-      messageBox.textContent = 'Failed to submit vehicle.';
+      console.error('Submission error:', err);
+      alert('Failed to submit vehicle. Check console for details.');
     }
   });
 });

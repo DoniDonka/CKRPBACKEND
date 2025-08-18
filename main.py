@@ -190,7 +190,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const messageBox = document.getElementById('messageBox');
   const loginBtn = document.getElementById('loginBtn');
 
-  // Check if user is admin
   async function checkAdmin() {
     try {
       const res = await fetch('/is-whitelisted');
@@ -211,7 +210,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   loginBtn.addEventListener('click', () => window.location.href = '/login');
 
-  // Load vehicles
   async function loadVehicles() {
     const res = await fetch('/vehicles');
     const vehicles = await res.json();
@@ -245,7 +243,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadVehicles();
 
-  // Submit vehicle
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const vehicle = {
