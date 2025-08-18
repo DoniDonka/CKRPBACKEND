@@ -6,7 +6,7 @@ import os
 
 app = FastAPI()
 
-# Allow frontend access
+# ✅ Allow frontend access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,9 +14,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ✅ Data file and whitelist
 DATA_FILE = "vehicles.json"
-WHITELIST = ["329997541523587073", "1287198545539104780"]  # Replace with real Discord IDs
+WHITELIST = [
+    "329997541523587073",  # Doni
+    "1287198545539104780"  # Second person
+]
 
+# ✅ Vehicle model
 class Vehicle(BaseModel):
     name: str
     miles: int
@@ -25,20 +30,24 @@ class Vehicle(BaseModel):
     image: str = ""
     added_by: str
 
+# ✅ Load vehicles from file
 def load_vehicles():
     if not os.path.exists(DATA_FILE):
         return []
     with open(DATA_FILE, "r") as f:
         return json.load(f)
 
+# ✅ Save vehicles to file
 def save_vehicles(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
+# ✅ Get all vehicles
 @app.get("/vehicles")
 def get_vehicles():
     return load_vehicles()
 
+# ✅ Add a vehicle (only if whitelisted)
 @app.post("/vehicles")
 def add_vehicle(vehicle: Vehicle):
     if vehicle.added_by not in WHITELIST:
@@ -47,3 +56,8 @@ def add_vehicle(vehicle: Vehicle):
     data.append(vehicle.dict())
     save_vehicles(data)
     return {"message": "Vehicle added successfully"}
+
+# ✅ Check if Discord ID is whitelisted
+@app.get("/is-whitelisted/{discord_id}")
+def is_whitelisted(discord_id: str):
+    return { "allowed": discord_id in WHITELIST }
