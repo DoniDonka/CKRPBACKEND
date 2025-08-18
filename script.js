@@ -1,16 +1,17 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const vehicleList = document.getElementById('vehicle-list');
   const form = document.getElementById('vehicle-form');
-  const addedByInput = document.getElementById('added_by');
-  const discordID = localStorage.getItem('userDiscordID');
+  const discordID = localStorage.getItem('userDiscordID'); // Will be replaced with OAuth2 later
+  const messageBox = document.createElement('p');
+  form.parentElement.insertBefore(messageBox, form);
 
-  // ✅ Show logged-in user
+  // Show logged-in user
   const header = document.querySelector('h1');
   if (discordID) {
     header.innerHTML += ` <span style="font-size:0.6em;color:#888;">(Logged in as ${discordID})</span>`;
   }
 
-  // ✅ Load vehicles for everyone
+  // Load vehicles
   async function loadVehicles() {
     try {
       const res = await fetch('https://ckrp-backend.onrender.com/vehicles');
@@ -24,16 +25,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       data.forEach(vehicle => {
         const div = document.createElement('div');
-        div.className = 'vehicle';
+        div.className = 'vehicle-card';
         div.innerHTML = `
-          <h3>${vehicle.name}</h3>
-          <p>Miles: ${vehicle.miles}</p>
-          <p>Condition: ${vehicle.condition}</p>
-          <p>Added by: ${vehicle.added_by}</p>
-          ${vehicle.image ? `<img src="${vehicle.image}" alt="${vehicle.name}" style="max-width:200px;">` : ''}
+          <div>
+            <strong>${vehicle.name}</strong><br>
+            Miles: ${vehicle.miles}<br>
+            Condition: ${vehicle.condition}<br>
+            Added by: ${vehicle.added_by}<br>
+            ${vehicle.image ? `<img src="${vehicle.image}" alt="${vehicle.name}" style="max-width:200px;margin-top:5px;">` : ''}
+          </div>
+          ${discordID ? `<button class="delete-btn" data-id="${vehicle.id}">Delete</button>` : ''}
         `;
         vehicleList.appendChild(div);
       });
+
+      // Add delete button listeners
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          try {
+            const res = await fetch(`https://ckrp-backend.onrender.com/vehicles/${id}?discord_id=${discordID}`, {
+              method: 'DELETE'
+            });
+            const result = await res.json();
+            messageBox.style.color = 'green';
+            messageBox.textContent = result.message || 'Vehicle deleted!';
+            await loadVehicles();
+          } catch (err) {
+            console.error('Delete error:', err);
+            messageBox.style.color = 'red';
+            messageBox.textContent = 'Failed to delete vehicle.';
+          }
+        });
+      });
+
     } catch (err) {
       console.error('Error loading vehicles:', err);
       vehicleList.innerHTML = '<p style="color:red;">Failed to load vehicles.</p>';
@@ -42,43 +67,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadVehicles();
 
-  // ✅ Check whitelist via backend
+  // Check whitelist
   async function checkWhitelist(id) {
+    if (!id) return false;
     try {
       const res = await fetch(`https://ckrp-backend.onrender.com/is-whitelisted/${id}`);
       const result = await res.json();
       return result.allowed === true;
-    } catch (err) {
-      console.error('Whitelist check failed:', err);
+    } catch {
       return false;
     }
   }
 
-  // ✅ Form visibility logic
-  if (discordID) {
-    const isAllowed = await checkWhitelist(discordID);
-    if (isAllowed) {
-      addedByInput.value = discordID;
-      form.style.display = 'block';
-    } else {
-      form.style.display = 'none';
-      const msg = document.createElement('p');
-      msg.style.color = 'red';
-      msg.textContent = 'You are not authorized to add vehicles.';
-      form.parentElement.insertBefore(msg, form);
-    }
+  // Show form only for admins
+  if (discordID && await checkWhitelist(discordID)) {
+    form.style.display = 'block';
   } else {
     form.style.display = 'none';
-    const msg = document.createElement('p');
-    msg.style.color = 'red';
-    msg.textContent = 'Log in to add vehicles.';
-    form.parentElement.insertBefore(msg, form);
+    messageBox.style.color = 'red';
+    messageBox.textContent = discordID ? 'You are not authorized to add vehicles.' : 'Log in to add vehicles.';
   }
 
-  // ✅ Submit form
+  // Submit new vehicle
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-
     const vehicle = {
       name: document.getElementById('name').value.trim(),
       miles: parseInt(document.getElementById('miles').value),
@@ -87,26 +99,26 @@ document.addEventListener('DOMContentLoaded', async () => {
       added_by: discordID
     };
 
-    console.log('Submitting vehicle:', vehicle);
-
     try {
       const res = await fetch('https://ckrp-backend.onrender.com/vehicles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(vehicle)
       });
-
       const result = await res.json();
       if (res.ok) {
-        alert('Vehicle added successfully!');
+        messageBox.style.color = 'green';
+        messageBox.textContent = 'Vehicle added successfully!';
         form.reset();
-        await loadVehicles(); // Reload without full page refresh
+        await loadVehicles();
       } else {
-        alert(`Error: ${result.detail || 'Failed to add vehicle.'}`);
+        messageBox.style.color = 'red';
+        messageBox.textContent = result.detail || 'Failed to add vehicle.';
       }
     } catch (err) {
-      console.error('Submission error:', err);
-      alert('Failed to submit vehicle. Check console for details.');
+      console.error('Submit error:', err);
+      messageBox.style.color = 'red';
+      messageBox.textContent = 'Failed to submit vehicle.';
     }
   });
 });
