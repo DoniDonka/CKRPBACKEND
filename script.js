@@ -1,127 +1,78 @@
-document.addEventListener('DOMContentLoaded', async () => {
-  const vehicleList = document.getElementById('vehicle-list');
-  const form = document.getElementById('vehicle-form');
-  const addedByInput = document.getElementById('added_by');
+// ✅ Whitelisted Discord IDs
+const allowedIDs = [
+  "329997541523587073", // Replace with real Discord IDs
+  "1287198545539104780"
+];
 
-  // Get Discord ID from localStorage (after login)
-  const discordID = localStorage.getItem('userDiscordID');
+// ✅ Backend API base (Render)
+const API_BASE = 'https://ckrp-backend.onrender.com';
 
-  // Show logged-in user in header
-  const header = document.querySelector('h1');
-  if (discordID) {
-    header.innerHTML += ` <span style="font-size:0.6em;color:#888;">(Logged in as ${discordID})</span>`;
+// ✅ Load vehicles from backend
+async function loadVehicles() {
+  try {
+    const res = await fetch(`${API_BASE}/vehicles`);
+    const vehicles = await res.json();
+    const list = document.getElementById('vehicle-list');
+    list.innerHTML = '';
+
+    if (vehicles.length === 0) {
+      list.innerHTML = '<p>No vehicles yet.</p>';
+      return;
+    }
+
+    vehicles.forEach(v => {
+      list.innerHTML += `
+        <div class="vehicle">
+          <strong>${v.name}</strong><br>
+          Miles: ${v.miles}<br>
+          Condition: ${v.condition}<br>
+          Added by: ${v.added_by}<br>
+          ${v.image ? `<img src="${v.image}" alt="Vehicle Image">` : ''}
+        </div>
+      `;
+    });
+  } catch (err) {
+    console.error('Failed to load vehicles:', err);
+    document.getElementById('vehicle-list').innerHTML = '<p>Error loading vehicles.</p>';
+  }
+}
+
+// ✅ Handle form submission
+document.getElementById('vehicle-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const discordID = document.getElementById('added_by').value.trim();
+  if (!allowedIDs.includes(discordID)) {
+    alert("You are not authorized to add vehicles.");
+    return;
   }
 
-  // Load vehicles
-  async function loadVehicles() {
-    try {
-      const res = await fetch('https://ckrp-backend.onrender.com/vehicles');
-      const data = await res.json();
-      vehicleList.innerHTML = '';
+  const vehicle = {
+    name: document.getElementById('name').value,
+    miles: parseInt(document.getElementById('miles').value),
+    condition: document.getElementById('condition').value,
+    image: document.getElementById('image').value,
+    added_by: discordID
+  };
 
-      if (data.length === 0) {
-        vehicleList.innerHTML = '<p>No vehicles listed yet.</p>';
-        return;
-      }
+  try {
+    const res = await fetch(`${API_BASE}/vehicles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(vehicle)
+    });
 
-      data.forEach(vehicle => {
-        const div = document.createElement('div');
-        div.className = 'vehicle';
-        div.innerHTML = `
-          <h3>${vehicle.name}</h3>
-          <p>Miles: ${vehicle.miles}</p>
-          <p>Condition: ${vehicle.condition}</p>
-          <p>Added by: ${vehicle.added_by}</p>
-          ${vehicle.image ? `<img src="${vehicle.image}" alt="${vehicle.name}">` : ''}
-          ${discordID && vehicle.added_by === discordID ? `<button class="delete-btn" data-id="${vehicle.id}">Delete</button>` : ''}
-        `;
-        vehicleList.appendChild(div);
-      });
-
-      // Add delete button listeners
-      document.querySelectorAll('.delete-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const id = btn.dataset.id;
-          try {
-            const res = await fetch(`https://ckrp-backend.onrender.com/vehicles/${id}?discord_id=${discordID}`, { method: 'DELETE' });
-            const result = await res.json();
-            alert(result.message || 'Deleted');
-            loadVehicles();
-          } catch (err) {
-            console.error('Delete error:', err);
-          }
-        });
-      });
-
-    } catch (err) {
-      console.error('Error loading vehicles:', err);
-      vehicleList.innerHTML = '<p style="color:red;">Failed to load vehicles.</p>';
+    if (!res.ok) {
+      throw new Error('Failed to add vehicle');
     }
+
+    await loadVehicles();
+    e.target.reset();
+  } catch (err) {
+    console.error('Error adding vehicle:', err);
+    alert('Failed to add vehicle. Please try again.');
   }
-
-  await loadVehicles();
-
-  // Check whitelist via backend
-  async function checkWhitelist(id) {
-    try {
-      const res = await fetch(`https://ckrp-backend.onrender.com/is-whitelisted/${id}`);
-      const result = await res.json();
-      return result.allowed === true;
-    } catch (err) {
-      console.error('Whitelist check failed:', err);
-      return false;
-    }
-  }
-
-  // Show form only if whitelisted
-  if (discordID) {
-    const isAllowed = await checkWhitelist(discordID);
-    if (isAllowed) {
-      addedByInput.value = discordID;
-      form.style.display = 'block';
-    } else {
-      form.style.display = 'none';
-      const msg = document.createElement('p');
-      msg.style.color = 'red';
-      msg.textContent = 'You are not authorized to add vehicles.';
-      form.parentElement.insertBefore(msg, form);
-    }
-  } else {
-    form.style.display = 'none';
-    const msg = document.createElement('p');
-    msg.style.color = 'red';
-    msg.textContent = 'Log in to add vehicles.';
-    form.parentElement.insertBefore(msg, form);
-  }
-
-  // Submit form
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const vehicle = {
-      name: document.getElementById('name').value.trim(),
-      miles: parseInt(document.getElementById('miles').value),
-      condition: document.getElementById('condition').value.trim(),
-      image: document.getElementById('image').value.trim(),
-      added_by: discordID
-    };
-
-    try {
-      const res = await fetch('https://ckrp-backend.onrender.com/vehicles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(vehicle)
-      });
-      const result = await res.json();
-      if (res.ok) {
-        alert('Vehicle added successfully!');
-        form.reset();
-        loadVehicles(); // reload without refreshing the page
-      } else {
-        alert(`Error: ${result.detail || 'Failed to add vehicle.'}`);
-      }
-    } catch (err) {
-      console.error('Submission error:', err);
-      alert('Failed to submit vehicle. Check console for details.');
-    }
-  });
 });
+
+// ✅ Initial load
+loadVehicles();
