@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import json
@@ -15,64 +15,67 @@ app.add_middleware(
 )
 
 # ✅ Data file and whitelist
-DATA_FILE = "vehicles.json"
+DATA_FILE = "blacklist.json"
 WHITELIST = [
     "329997541523587073",  # Doni
-    "1287198545539104780"  # Second person
+    "1287198545539104780",  # Second person
+    "1094486136283467847",  # Added
+    "898599688918405181"   # Added
 ]
 
-# ✅ Vehicle model
-class Vehicle(BaseModel):
-    name: str
-    miles: int
-    condition: str
-    in_stock: bool = True
-    image: str = ""
-    added_by: str
+# ✅ Blacklist entry model (same form fields, renamed)
+class BlacklistEntry(BaseModel):
+    name: str               # Username
+    miles: int              # Danger level
+    condition: str          # Reason
+    in_stock: bool = True   # Optional flag (can be ignored)
+    image: str = ""         # Player image URL
+    added_by: str           # Submitter Discord ID
 
-# ✅ Load vehicles from file
-def load_vehicles():
+# ✅ Load blacklist from file
+def load_blacklist():
     if not os.path.exists(DATA_FILE):
         return []
     with open(DATA_FILE, "r") as f:
         return json.load(f)
 
-# ✅ Save vehicles to file
-def save_vehicles(data):
+# ✅ Save blacklist to file
+def save_blacklist(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# ✅ Get all vehicles
-@app.get("/vehicles")
-def get_vehicles():
-    return load_vehicles()
+# ✅ Get all blacklist entries
+@app.get("/blacklist")
+def get_blacklist():
+    return load_blacklist()
 
-# ✅ Add a vehicle (only if whitelisted)
-@app.post("/vehicles")
-def add_vehicle(vehicle: Vehicle):
-    if vehicle.added_by not in WHITELIST:
+# ✅ Add a blacklist entry (only if whitelisted)
+@app.post("/blacklist")
+def add_blacklist_entry(entry: BlacklistEntry):
+    if entry.added_by not in WHITELIST:
         return {"error": "Unauthorized Discord ID"}
-    data = load_vehicles()
-    data.append(vehicle.dict())
-    save_vehicles(data)
-    return {"message": "Vehicle added successfully"}
+    data = load_blacklist()
+    data.append(entry.dict())
+    save_blacklist(data)
+    return {"message": "Player blacklisted successfully"}
 
 # ✅ Check if Discord ID is whitelisted
 @app.get("/is-whitelisted/{discord_id}")
 def is_whitelisted(discord_id: str):
     return { "allowed": discord_id in WHITELIST }
-from fastapi import HTTPException
 
-@app.delete("/vehicles/{index}")
-def delete_vehicle(index: int, request: Request):
+# ✅ Delete blacklist entry by index (admin only)
+@app.delete("/blacklist/{index}")
+def delete_blacklist_entry(index: int, request: Request):
     discord_id = request.query_params.get("discord_id")
     if discord_id not in WHITELIST:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
-    data = load_vehicles()
+    data = load_blacklist()
     if index < 0 or index >= len(data):
-        raise HTTPException(status_code=404, detail="Vehicle not found")
+        raise HTTPException(status_code=404, detail="Entry not found")
 
     deleted = data.pop(index)
-    save_vehicles(data)
-    return {"message": "Vehicle deleted", "deleted": deleted}
+    save_blacklist(data)
+    return {"message": "Blacklist entry deleted", "deleted": deleted}
+
