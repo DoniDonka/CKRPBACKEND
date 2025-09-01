@@ -79,3 +79,12 @@ def delete_blacklist_entry(index: int, request: Request):
     save_blacklist(data)
     return {"message": "Blacklist entry deleted", "deleted": deleted}
 
+# ✅ Aliases for frontend expecting /api/blacklist
+@app.get("/api/blacklist")
+def get_blacklist_alias():
+    return get_blacklist()
+
+@app.post("/api/blacklist")
+def add_blacklist_entry_alias(entry: BlacklistEntry):
+    return add_blacklist_entry(entry)
+
