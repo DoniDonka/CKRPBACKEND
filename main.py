@@ -1,87 +1,60 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import json
-import os
+from typing import List
+from uuid import uuid4
 
 app = FastAPI()
 
-# ✅ Allow frontend access
+# CORS so your GitHub Pages frontend can call this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # or ["https://donidonka.github.io"]
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ✅ Data file and whitelist
-DATA_FILE = "blacklist.json"
-WHITELIST = [
-    "329997541523587073",  # Doni
-    "1094486136283467847",  # Pin
-    "898599688918405181"   # Musc
-]
-
-# ✅ Blacklist entry model (updated field names)
+# Blacklist entry model
 class BlacklistEntry(BaseModel):
-    username: str          # Player's in-game or Discord name
-    danger_level: str      # Danger level (1–10 or descriptive)
-    reason: str            # Reason for blacklisting
-    image_url: str = ""    # Player image URL (optional)
-    discord_id: str        # Submitter Discord ID
+    id: str
+    target: str       # Player being blacklisted
+    username: str     # Who added them
+    reason: str       # Why they were blacklisted
 
-# ✅ Load blacklist from file
-def load_blacklist():
-    if not os.path.exists(DATA_FILE):
-        return []
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+# In-memory "database"
+blacklist_db: List[BlacklistEntry] = []
 
-# ✅ Save blacklist to file
-def save_blacklist(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+# GET all blacklist entries
+@app.get("/blacklist", response_model=List[BlacklistEntry])
+async def get_blacklist():
+    return blacklist_db
 
-# ✅ Get all blacklist entries
-@app.get("/blacklist")
-def get_blacklist():
-    return load_blacklist()
+# POST a new blacklist entry
+class BlacklistEntryCreate(BaseModel):
+    target: str
+    username: str
+    reason: str
 
-# ✅ Add a blacklist entry (only if whitelisted)
-@app.post("/blacklist")
-def add_blacklist_entry(entry: BlacklistEntry):
-    if entry.discord_id not in WHITELIST:
-        return {"error": "Unauthorized Discord ID"}
-    data = load_blacklist()
-    data.append(entry.dict())
-    save_blacklist(data)
-    return {"message": "Player blacklisted successfully"}
+@app.post("/blacklist", response_model=BlacklistEntry)
+async def add_blacklist(entry: BlacklistEntryCreate):
+    if not entry.target or not entry.username or not entry.reason:
+        raise HTTPException(status_code=400, detail="All fields are required.")
 
-# ✅ Check if Discord ID is whitelisted
-@app.get("/is-whitelisted/{discord_id}")
-def is_whitelisted(discord_id: str):
-    return {"allowed": discord_id in WHITELIST}
+    new_entry = BlacklistEntry(
+        id=str(uuid4()),
+        target=entry.target,
+        username=entry.username,
+        reason=entry.reason
+    )
+    blacklist_db.append(new_entry)
+    return new_entry
 
-# ✅ Delete blacklist entry by index (admin only)
-@app.delete("/blacklist/{index}")
-def delete_blacklist_entry(index: int, request: Request):
-    discord_id = request.query_params.get("discord_id")
-    if discord_id not in WHITELIST:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-
-    data = load_blacklist()
-    if index < 0 or index >= len(data):
-        raise HTTPException(status_code=404, detail="Entry not found")
-
-    deleted = data.pop(index)
-    save_blacklist(data)
-    return {"message": "Blacklist entry deleted", "deleted": deleted}
-
-# ✅ API aliases for frontend
-@app.get("/api/blacklist")
-def get_blacklist_alias():
-    return get_blacklist()
-
-@app.post("/api/blacklist")
-def add_blacklist_entry_alias(entry: BlacklistEntry):
-    return add_blacklist_entry(entry)
+# DELETE a blacklist entry by ID
+@app.delete("/blacklist/{entry_id}")
+async def delete_blacklist(entry_id: str):
+    global blacklist_db
+    for e in blacklist_db:
+        if e.id == entry_id:
+            blacklist_db = [entry for entry in blacklist_db if entry.id != entry_id]
+            return {"success": True}
+    raise HTTPException(status_code=404, detail="Entry not found")
