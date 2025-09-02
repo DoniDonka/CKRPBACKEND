@@ -18,19 +18,17 @@ app.add_middleware(
 DATA_FILE = "blacklist.json"
 WHITELIST = [
     "329997541523587073",  # Doni
-    "1287198545539104780",  # Second person
-    "1094486136283467847",  # Added
-    "898599688918405181"   # Added
+    "1094486136283467847",  # Pin
+    "898599688918405181"   # Musc
 ]
 
-# ✅ Blacklist entry model (same form fields, renamed)
+# ✅ Blacklist entry model (updated field names)
 class BlacklistEntry(BaseModel):
-    name: str               # Username
-    miles: int              # Danger level
-    condition: str          # Reason
-    in_stock: bool = True   # Optional flag (can be ignored)
-    image: str = ""         # Player image URL
-    added_by: str           # Submitter Discord ID
+    username: str          # Player's in-game or Discord name
+    danger_level: str      # Danger level (1–10 or descriptive)
+    reason: str            # Reason for blacklisting
+    image_url: str = ""    # Player image URL (optional)
+    discord_id: str        # Submitter Discord ID
 
 # ✅ Load blacklist from file
 def load_blacklist():
@@ -52,7 +50,7 @@ def get_blacklist():
 # ✅ Add a blacklist entry (only if whitelisted)
 @app.post("/blacklist")
 def add_blacklist_entry(entry: BlacklistEntry):
-    if entry.added_by not in WHITELIST:
+    if entry.discord_id not in WHITELIST:
         return {"error": "Unauthorized Discord ID"}
     data = load_blacklist()
     data.append(entry.dict())
@@ -62,7 +60,7 @@ def add_blacklist_entry(entry: BlacklistEntry):
 # ✅ Check if Discord ID is whitelisted
 @app.get("/is-whitelisted/{discord_id}")
 def is_whitelisted(discord_id: str):
-    return { "allowed": discord_id in WHITELIST }
+    return {"allowed": discord_id in WHITELIST}
 
 # ✅ Delete blacklist entry by index (admin only)
 @app.delete("/blacklist/{index}")
@@ -79,7 +77,7 @@ def delete_blacklist_entry(index: int, request: Request):
     save_blacklist(data)
     return {"message": "Blacklist entry deleted", "deleted": deleted}
 
-# ✅ Aliases for frontend expecting /api/blacklist
+# ✅ API aliases for frontend
 @app.get("/api/blacklist")
 def get_blacklist_alias():
     return get_blacklist()
@@ -87,4 +85,3 @@ def get_blacklist_alias():
 @app.post("/api/blacklist")
 def add_blacklist_entry_alias(entry: BlacklistEntry):
     return add_blacklist_entry(entry)
-
